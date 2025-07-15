@@ -19,18 +19,9 @@
 
 #define MODEM_POWER_PIN 12
 
-LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(main, LOG_LEVEL_INF); 
 
-#define TELEMETRY_SUFFIX "/telemetry"
-#define TELEMETRY_QOS MQTT_QOS_0_AT_MOST_ONCE
-#define TOPIC_BUFFER_LEN 128
-
-static struct k_sem lte_connected = Z_SEM_INITIALIZER(lte_connected, 0, 1);
-
-static char topic_buf[TOPIC_BUFFER_LEN] = {0};
-static bool topic_ready = false;
-
-#define SEC_TAG 12345
+// static struct k_sem lte_connected = Z_SEM_INITIALIZER(lte_connected, 0, 1);
 
 static void lte_handler(const struct lte_lc_evt *const evt)
 {
@@ -42,20 +33,7 @@ static void lte_handler(const struct lte_lc_evt *const evt)
                 if (evt->nw_reg_status == LTE_LC_NW_REG_REGISTERED_HOME ||
                     evt->nw_reg_status == LTE_LC_NW_REG_REGISTERED_ROAMING) {
                         LOG_INF("LTE connected");
-                        k_sem_give(&lte_connected);
-                }
-                break;
-        }
-}
-{
-        switch (evt->type) {
-        case LTE_LC_EVT_NW_REG_STATUS:
-                if (evt->nw_reg_status == LTE_LC_NW_REG_REGISTERED_HOME ||
-                    evt->nw_reg_status == LTE_LC_NW_REG_REGISTERED_ROAMING) {
-                        LOG_INF("LTE network registration successful");
-                        k_sem_give(&lte_connected);
-                } else {
-                        LOG_WRN("LTE network registration status: %d", evt->nw_reg_status);
+                        // k_sem_give(&lte_connected);
                 }
                 break;
         default:
@@ -64,20 +42,20 @@ static void lte_handler(const struct lte_lc_evt *const evt)
         }
 }
 
+void modem_power_on(void)
+{
+        nrf_gpio_cfg_output(MODEM_POWER_PIN);
+        nrf_gpio_pin_set(MODEM_POWER_PIN);
+        k_sleep(K_SECONDS(1));
+}
+
 int main(void)
 {
         int err = 0;
-        char uuid[64] = {0};
 
         LOG_INF("Delaying startup for 5 seconds to allow the modem to initialize");
         k_sleep(K_SECONDS(5));
 
-        void modem_power_on(void)
-        {
-                nrf_gpio_cfg_output(MODEM_POWER_PIN);
-                nrf_gpio_pin_set(MODEM_POWER_PIN);
-                k_sleep(K_SECONDS(1));
-        }
 
         modem_power_on();
 
@@ -97,5 +75,10 @@ int main(void)
                 LOG_INF("Modem firmware version: %s", fw_version);
         }
 
-
+        LOG_INF("Calling lte_lc_connect_aysnc");
+        err = lte_lc_connect_async(lte_handler);
+        if (err){
+                LOG_ERR("Failed to connect to LTE network: %d", err);
+                return 1;
+        }
 }
